@@ -12,9 +12,8 @@ GOBUILD=$(GO) build
 GOINSTALL=$(GO) install
 
 ORG_ZSTACK=org.zstack
-LIBRARIES=$(ORG_ZSTACK)/server
+LIBRARIES=$(ORG_ZSTACK)/server $(ORG_ZSTACK)/client
 TARGET_DIR=target
-
 
 build: $(SOURCES)
 	for lib in $(LIBRARIES); do \
@@ -31,5 +30,10 @@ build-server:
 	mkdir -p $(SERVER_BUILD_DIR)
 	$(GOBUILD) -o $(SERVER_BUILD_DIR)/zanker-server $(ORG_ZSTACK)/server/main
 
+CLIENT_BUILD_DIR=target/build/client
+build-client:
+	mkdir -p $(CLIENT_BUILD_DIR)
+	$(GOBUILD) -o $(CLIENT_BUILD_DIR)/zanker $(ORG_ZSTACK)/client/main
 
-install: build-server
+
+install: build-server build-client
