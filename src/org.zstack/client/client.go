@@ -41,7 +41,7 @@ func (client *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func NewClient() *Client {
-	flag.StringVar(&socketPath, "sockt", "", "path to the unix socket")
+	flag.StringVar(&socketPath, "socket", "", "path to the unix socket")
 	flag.Parse()
 
 	if flag.NArg() > 0 {

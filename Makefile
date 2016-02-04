@@ -10,6 +10,7 @@ SOURCES := $(shell find $(SOURCEDIR) -name '*.go')
 GO=$(GOROOT)/bin/go
 GOBUILD=$(GO) build
 GOINSTALL=$(GO) install
+GOGET=$(GO) get
 
 ORG_ZSTACK=org.zstack
 LIBRARIES=$(ORG_ZSTACK)/server $(ORG_ZSTACK)/client
@@ -21,6 +22,12 @@ build: $(SOURCES)
 	done 
 
 .PHONY: install clean
+
+DEPS=github.com/Sirupsen/logrus github.com/gorilla/mux
+
+deps:
+	$(GOGET) $(DEPS)
+
 
 clean:
 	rm -rf target/
