@@ -6,7 +6,6 @@ import (
 )
 
 func main() {
-	c := client.NewClient()
-	c.Run()
+	client.Run()
 	os.Exit(0)
 }

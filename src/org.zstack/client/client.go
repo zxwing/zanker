@@ -6,80 +6,70 @@ import (
 	"flag"
 	"fmt"
 	//"io/ioutil"
+	LOG "github.com/Sirupsen/logrus"
 	"net"
 	"net/http"
 	"os"
 )
 
-type (
-	Client struct {
-		conn   net.Conn
-		client *http.Client
-
-		SocketPath string
-	}
-)
+type HttpClient struct {
+	client *http.Client
+}
 
 var (
-	//test       string
-	socketPath string
+	_socketPath string
+
+	Http *HttpClient
 )
 
 const (
 	SCHEME = "unix+http"
 )
 
-func (client *Client) RoundTrip(req *http.Request) (*http.Response, error) {
-	var buf bytes.Buffer
-	req.Write(&buf)
-	if _, err := client.conn.Write(buf.Bytes()); err != nil {
-		return nil, err
-	}
+type RoundTripFunc func(*http.Request) (*http.Response, error)
 
-	rsp, err := http.ReadResponse(bufio.NewReader(client.conn), req)
-	return rsp, err
+func (f RoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
-func NewClient() *Client {
-	flag.StringVar(&socketPath, "socket", "", "path to the unix socket")
-	flag.Parse()
-
-	if flag.NArg() > 0 {
-		flag.Usage()
-		fmt.Printf("unknown options %v\n", flag.Args())
-		os.Exit(1)
-	}
-
-	if socketPath == "" {
+func _prepareSocket() {
+	if _socketPath == "" {
 		flag.Usage()
 		fmt.Printf("option [-socket] is required and cannot be an empty string\n")
 		os.Exit(1)
 	}
 
-	if _, err := os.Stat(socketPath); os.IsNotExist(err) {
-		fmt.Printf("the socket[%s] not found\n", socketPath)
+	if _, err := os.Stat(_socketPath); os.IsNotExist(err) {
+		fmt.Printf("the socket[%s] not found\n", _socketPath)
 		os.Exit(1)
 	}
 
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.Dial("unix", _socketPath)
 	if err != nil {
-		panic(fmt.Errorf("cannot connect to the socket[%s]", socketPath))
+		panic(fmt.Errorf("cannot connect to the socket[%s]", _socketPath))
 	}
 
-	c := &Client{
-		SocketPath: socketPath,
-		conn:       conn,
+	var rt RoundTripFunc = func(req *http.Request) (*http.Response, error) {
+		var buf bytes.Buffer
+		req.Write(&buf)
+		if _, err := conn.Write(buf.Bytes()); err != nil {
+			return nil, err
+		}
+
+		rsp, err := http.ReadResponse(bufio.NewReader(conn), req)
+		return rsp, err
 	}
 
 	t := &http.Transport{}
-	t.RegisterProtocol(SCHEME, c)
-	c.client = &http.Client{Transport: t}
+	t.RegisterProtocol(SCHEME, rt)
 
-	return c
+	Http = &HttpClient{}
+	Http.client = &http.Client{Transport: t}
 }
 
-func (client *Client) Run() {
-	rsp, err := client.client.Get(fmt.Sprintf("%s:///v1/shell?command=ls", SCHEME))
+func (h *HttpClient) Get(url string) (int, string, *http.Response) {
+	LOG.Debugf("GET %s", url)
+	rsp, err := h.client.Get(fmt.Sprintf("%s://%s", SCHEME, url))
 	if err != nil {
 		panic(err)
 	}
@@ -87,5 +77,19 @@ func (client *Client) Run() {
 	defer rsp.Body.Close()
 	var res bytes.Buffer
 	res.ReadFrom(rsp.Body)
-	fmt.Println(res.String())
+
+	return rsp.StatusCode, res.String(), rsp
+}
+
+func Run() {
+	ParseSubCommands()
+	_prepareSocket()
+	RunSubCommand()
+}
+
+func init() {
+	LOG.SetOutput(os.Stderr)
+	LOG.SetLevel(LOG.DebugLevel)
+
+	flag.StringVar(&_socketPath, "socket", "", "path to the unix socket")
 }
