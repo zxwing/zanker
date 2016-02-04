@@ -79,7 +79,7 @@ func NewClient() *Client {
 }
 
 func (client *Client) Run() {
-	rsp, err := client.client.Get(fmt.Sprintf("%s:///echo", SCHEME))
+	rsp, err := client.client.Get(fmt.Sprintf("%s:///v1/shell?command=ls", SCHEME))
 	if err != nil {
 		panic(err)
 	}

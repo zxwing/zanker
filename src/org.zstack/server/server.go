@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
-	"io/ioutil"
+	//"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -24,7 +24,16 @@ var (
 	optionSocketPath string
 
 	server = &Server{}
+
+	PingRoute = &Route{
+		Path:    ApiURL("/ping"),
+		Handler: APIPing,
+	}
 )
+
+func APIPing(w http.ResponseWriter, req *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
 
 func (serv *Server) Run() {
 	go func() {
@@ -78,14 +87,7 @@ func registerServerOptions() {
 }
 
 func registerServerRoute() {
-	r := Route{}
-	r.Path = "/echo"
-	r.Handler = func(w http.ResponseWriter, req *http.Request) {
-		body, _ := ioutil.ReadAll(req.Body)
-		LOG.Debugf("body:%s", body)
-		fmt.Fprint(w, "hello world!")
-	}
-	r.Register()
+	PingRoute.Register()
 }
 
 func initLog() {

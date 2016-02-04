@@ -54,7 +54,7 @@ func (r *Route) Register() {
 func NewRouter() *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
 	for _, r := range routes {
-		re := router.HandleFunc(r.Path, r.GetWrappedHandler()).Name("echo")
+		re := router.HandleFunc(r.Path, r.GetWrappedHandler())
 		re.Methods(r.Methods...)
 	}
 
@@ -69,6 +69,12 @@ func NewRouter() *mux.Router {
 
 func (r *Route) GetWrappedHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}()
+
 		r.Handler(w, req)
 	}
 }
