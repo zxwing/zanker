@@ -44,6 +44,7 @@ func ParseSubCommands() {
 
 	oldUsage := flag.Usage
 	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "\n\n")
 		oldUsage()
 		for name, sc := range _subCommandMap {
 			fmt.Fprintf(os.Stderr, "\n# %s %s\n", os.Args[0], name)
