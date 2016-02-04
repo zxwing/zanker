@@ -24,17 +24,20 @@ type (
 	}
 )
 
-func _shell(f string, v ...interface{}) (retCode int, stdout, stderr string, err error) {
+func _shell(f string, v ...interface{}) (retCode int, stdout, stderr string) {
 	var so, se bytes.Buffer
 	command := exec.Command("bash", "-c", fmt.Sprintf(f, v...))
 	command.Stdout = &so
 	command.Stderr = &se
 
 	var waitStatus syscall.WaitStatus
-	if err = command.Run(); err != nil {
+	if err := command.Run(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			waitStatus = exitError.Sys().(syscall.WaitStatus)
 			retCode = waitStatus.ExitStatus()
+		} else {
+			// looks like a system error, for example, IO error
+			panic(err)
 		}
 	} else {
 		waitStatus = command.ProcessState.Sys().(syscall.WaitStatus)
@@ -60,10 +63,7 @@ func APIShell(w http.ResponseWriter, req *http.Request) {
 		panic(fmt.Errorf("command cannot be empty. Please either set the command by a query string, for example, ?command=ls or put the command in the body"))
 	}
 
-	code, stdout, stderr, err := _shell(command)
-	if err != nil {
-		panic(err)
-	}
+	code, stdout, stderr := _shell(command)
 
 	ret := &_shellResult{
 		Code:   code,
@@ -71,12 +71,7 @@ func APIShell(w http.ResponseWriter, req *http.Request) {
 		Stderr: stderr,
 	}
 
-	if code == 0 {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusNotAcceptable)
-	}
-
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(ret)
 }
 

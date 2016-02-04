@@ -62,6 +62,13 @@ func ParseSubCommands() {
 }
 
 func RunSubCommand() {
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}()
+
 	cmdName := flag.Arg(0)
 
 	if sc, ok := _subCommandMap[cmdName]; ok {
@@ -70,9 +77,11 @@ func RunSubCommand() {
 		if err := sc.cmd.CheckFlags(); err != nil {
 			fmt.Fprintf(os.Stderr, "%v", err)
 			flag.Usage()
+			os.Exit(1)
 		}
 
-		sc.cmd.Run()
+		ret := sc.cmd.Run()
+		os.Exit(ret)
 	} else {
 		fmt.Fprintf(os.Stderr, "error: command[%s] not found\n", cmdName)
 		flag.Usage()

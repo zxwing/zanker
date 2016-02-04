@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	LOG "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"net/http"
@@ -12,24 +13,11 @@ type (
 		Path    string
 		Handler http.HandlerFunc
 	}
-
-	/*
-		NotFoundHandler struct {
-			router *mux.Router
-		}
-	*/
 )
 
 var (
 	routes []*Route = make([]*Route, 0)
 )
-
-/*
-func (h *NotFoundHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	LOG.Debugf("not found: %v", r.URL)
-	w.WriteHeader(http.StatusNotFound)
-}
-*/
 
 func (r *Route) Register() {
 	if r.Path == "" {
@@ -58,12 +46,6 @@ func NewRouter() *mux.Router {
 		re.Methods(r.Methods...)
 	}
 
-	/*
-		router.NotFoundHandler = &NotFoundHandler{
-			router: router,
-		}
-	*/
-
 	return router
 }
 
@@ -72,9 +54,11 @@ func (r *Route) GetWrappedHandler() func(http.ResponseWriter, *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintln(w, err)
 			}
 		}()
 
+		LOG.Debugf("%s %v", req.Method, req.URL)
 		r.Handler(w, req)
 	}
 }

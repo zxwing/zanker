@@ -1,8 +1,12 @@
 package client
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 )
 
@@ -10,12 +14,18 @@ type (
 	_shell struct {
 		command string
 		file    string
+		json    bool
+	}
+
+	_shellResult struct {
+		Code   int    `json:"code"`
+		Stdout string `json:"stdout"`
+		Stderr string `json:"stderr"`
 	}
 )
 
 const (
-	SHELL_API_PATH         = "/shell"
-	SHELL_API_COMMAND_PATH = "/shell?command=%s"
+	SHELL_API_PATH = "/shell"
 )
 
 func (s *_shell) Name() string {
@@ -24,7 +34,8 @@ func (s *_shell) Name() string {
 
 func (s *_shell) Flags(f *flag.FlagSet) {
 	f.StringVar(&s.command, "c", "", "one line shell command")
-	f.StringVar(&s.command, "f", "", "path to the shell file")
+	f.StringVar(&s.file, "f", "", "path to the shell file")
+	f.BoolVar(&s.json, "json", false, "encode output in JSON format")
 }
 
 func (s *_shell) CheckFlags() error {
@@ -47,20 +58,43 @@ func (s *_shell) CheckFlags() error {
 func (s *_shell) Run() int {
 	var status int
 	var body string
+	var rsp *http.Response
+
 	if s.command != "" {
-		fmt.Printf("xxxxxxxxxxxxxxxxxxx %s\n", s.command)
-		url := ApiURL(SHELL_API_COMMAND_PATH, s.command)
-		fmt.Printf("yyyyyyyyyyyyyyyyy %s\n", url)
-		status, body, _ = Http.Get(url)
+		url := Url(SHELL_API_PATH).Query("command", s.command).String()
+		status, body, rsp = Http.Get(url)
 	} else {
+		content, err := ioutil.ReadFile(s.file)
+		if err != nil {
+			panic(err)
+		}
+
+		url := Url(SHELL_API_PATH).String()
+		status, body, rsp = Http.Post(url, string(content))
 	}
 
-	fmt.Println(body)
-	if status == 200 {
-		return 0
-	} else {
-		return 1
+	if status != 200 {
+		panic(ServerError(fmt.Sprintf("%s, %s", rsp.Status, body)))
 	}
+
+	if s.json {
+		fmt.Fprint(os.Stdout, body)
+		return 0
+	}
+
+	ret := &_shellResult{}
+	if err := json.NewDecoder(bytes.NewBufferString(body)).Decode(ret); err != nil {
+		panic(err)
+	}
+
+	if ret.Stdout != "" {
+		fmt.Fprint(os.Stdout, ret.Stdout)
+	}
+	if ret.Stderr != "" {
+		fmt.Fprint(os.Stderr, ret.Stderr)
+	}
+
+	return ret.Code
 }
 
 func init() {

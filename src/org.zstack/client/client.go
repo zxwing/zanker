@@ -69,7 +69,22 @@ func _prepareSocket() {
 
 func (h *HttpClient) Get(url string) (int, string, *http.Response) {
 	LOG.Debugf("GET %s", url)
-	rsp, err := h.client.Get(fmt.Sprintf("%s://%s", SCHEME, url))
+	rsp, err := h.client.Get(url)
+	if err != nil {
+		panic(err)
+	}
+
+	defer rsp.Body.Close()
+	var res bytes.Buffer
+	res.ReadFrom(rsp.Body)
+
+	return rsp.StatusCode, res.String(), rsp
+}
+
+func (h *HttpClient) Post(url, body string) (int, string, *http.Response) {
+	LOG.Debugf("POST %s", url)
+	rsp, err := h.client.Post(url, "application/json", bytes.NewBufferString(body))
+
 	if err != nil {
 		panic(err)
 	}
