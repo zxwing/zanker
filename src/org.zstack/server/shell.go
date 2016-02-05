@@ -29,8 +29,8 @@ func (s *Shell) Methods() []string {
 	return []string{"GET", "POST"}
 }
 
-func (s *Shell) Path() string {
-	return "/shell"
+func (s *Shell) Path() []string {
+	return []string{"/shell"}
 }
 
 func (s *Shell) Handler(w http.ResponseWriter, req *http.Request) {

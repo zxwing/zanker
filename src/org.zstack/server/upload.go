@@ -3,13 +3,15 @@ package server
 import (
 	"crypto/md5"
 	"fmt"
+	"github.com/gorilla/mux"
 	"io"
 	"net/http"
+	"org.zstack/lib"
 	"os"
 	"path"
 	"strconv"
-	"strings"
-	"text/template"
+	//"strings"
+	//"text/template"
 	"time"
 )
 
@@ -22,7 +24,16 @@ type (
 )
 
 const (
-	UPLOAD_HEADER_MD5 = "Content-MD5"
+	UPLOAD_HEADER_MD5            = "Content-MD5"
+	UPLOAD_HEADER_LOCATION       = "Location"
+	UPLOAD_HEADER_DIGEST         = "Content-Digest"
+	UPLOAD_HEADER_URL            = "URL"
+	UPLOAD_HEADER_TOKEN          = "Token"
+	UPLOAD_HEADER_RANGE          = "Content-Range"
+	UPLOAD_HEADER_CONTENT_LENGTH = "Content-Length"
+
+	UPLOAD_START      = iota
+	UPLOAD_MONOLITHIC = iota
 )
 
 var (
@@ -44,79 +55,138 @@ var (
 )
 
 func (u *Upload) Methods() []string {
-	return []string{"GET", "POST"}
+	return []string{"GET", "POST", "PUT", "DELETE", "HEAD"}
 }
 
-func (u *Upload) Path() string {
-	return "/upload"
-}
-
-func (u *Upload) handleGet(w http.ResponseWriter, req *http.Request) {
-	tmpl, err := template.New("upload").Parse(u.form)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := tmpl.Execute(w, map[string]string{
-		"action": Url(u.Path()).String(),
-		"token":  u.createToken(),
-	}); err != nil {
-		panic(err)
+func (u *Upload) Path() []string {
+	return []string{
+		"/upload",
+		"/upload/{token}",
 	}
 }
 
-func (u *Upload) handleUpload(w http.ResponseWriter, req *http.Request) {
-	req.ParseMultipartForm(64 << 20)
-	file, handler, err := req.FormFile("uploadfile")
+func (u *Upload) toAction(req *http.Request) int {
+	vars := mux.Vars(req)
+	_, hasToken := vars["token"]
+	digest := req.URL.Query().Get("digest")
+	contentRange := req.Header.Get(UPLOAD_HEADER_RANGE)
 
+	if req.Method == "POST" && !hasToken {
+		return UPLOAD_START
+	} else if req.Method == "POST" && hasToken && digest != "" && contentRange == "" {
+		return UPLOAD_MONOLITHIC
+	} else {
+		panic("unknown action")
+	}
+}
+
+func (u *Upload) makeTempFilePath(location, token string) string {
+	return path.Join(path.Dir(location), fmt.Sprintf("%s.upload", token))
+}
+
+func (u *Upload) start(w http.ResponseWriter, req *http.Request) {
+	location := req.Header.Get(UPLOAD_HEADER_LOCATION)
+	if location == "" {
+		panic(fmt.Errorf("'%s' must be set in the header for starting a upload", UPLOAD_HEADER_LOCATION))
+	} else if !path.IsAbs(location) {
+		panic(fmt.Errorf("%s[%s] must be an absolute path", UPLOAD_HEADER_LOCATION, location))
+	}
+
+	digest := req.Header.Get(UPLOAD_HEADER_DIGEST)
+	if digest == "" {
+		panic(fmt.Errorf("'%s' must be set in the header for starting a upload", UPLOAD_HEADER_DIGEST))
+	}
+
+	if lib.IsFile(location) {
+		if sum := lib.Md5(location); sum == digest {
+			// for existing and same file, don't upload it
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+
+	if err := os.MkdirAll(path.Dir(location), os.ModeDir); err != nil {
+		panic(fmt.Errorf("cannot create directory for the file[%s], %v", location, err))
+	}
+
+	token := lib.RandomString()
+	tmpFile := u.makeTempFilePath(location, token)
+	f, err := os.Create(tmpFile)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("cannot create the file[%s], %v", tmpFile, err))
 	}
+	f.Close()
 
-	defer file.Close()
-
-	if !path.IsAbs(handler.Filename) {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "filename: %s is not an absolute path", handler.Filename)
-		return
-	}
-
-	fmt.Fprintf(w, "%v", handler.Header)
-
-	f, err := os.OpenFile(handler.Filename, os.O_WRONLY|os.O_CREATE, 0666)
-	if err != nil {
-		panic(err)
-	}
-
-	defer f.Close()
-	io.Copy(f, file)
-
-	checksum := req.Header.Get(UPLOAD_HEADER_MD5)
-	if checksum != "" {
-		deleteFile := func() {
-			os.Remove(handler.Filename)
-		}
-
-		code, stdout, stderr := PluginShell.shell("/usr/bin/md5sum %s", handler.Filename)
-		if code != 0 {
-			defer deleteFile()
-			panic(fmt.Errorf("cannot calculate the MD5, %s, %s", stderr, stdout))
-		}
-
-		if !strings.Contains(stdout, checksum) {
-			defer deleteFile()
-			panic(fmt.Errorf("MD5 not matching. Expected: %s, but %s", checksum, stdout))
-		}
-	}
-
+	w.Header().Add(UPLOAD_HEADER_URL, Url(fmt.Sprintf("/upload/%s", token)).String())
+	w.Header().Add(UPLOAD_HEADER_TOKEN, token)
 	w.WriteHeader(http.StatusAccepted)
 }
 
+func (u *Upload) monolithicUpload(w http.ResponseWriter, req *http.Request) {
+	length := req.Header.Get(UPLOAD_HEADER_CONTENT_LENGTH)
+	if length == "" {
+		panic(fmt.Errorf("'%s' must be set in the header for a monolithic upload", UPLOAD_HEADER_CONTENT_LENGTH))
+	}
+
+	nlen, err := strconv.ParseInt(length, 10, 64)
+
+	location := req.Header.Get(UPLOAD_HEADER_LOCATION)
+	if location == "" {
+		panic(fmt.Errorf("'%s' must be set in the header for a monolithic upload", UPLOAD_HEADER_LOCATION))
+	}
+
+	vars := mux.Vars(req)
+	token, _ := vars["token"]
+	digest := req.URL.Query().Get("digest")
+
+	tmpFile := u.makeTempFilePath(location, token)
+	if !lib.IsFile(tmpFile) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "cannot find the temporary file at %s, have you started a upload yet?", tmpFile)
+		return
+	}
+
+	f, err := os.OpenFile(tmpFile, os.O_WRONLY, 0666)
+	if err != nil {
+		panic(fmt.Errorf("cannot open the file[%s], %v", tmpFile, err))
+	}
+
+	deleteFile := func() {
+		os.Remove(tmpFile)
+	}
+
+	n, err := io.Copy(f, req.Body)
+	if err != nil {
+		defer deleteFile()
+		panic(fmt.Errorf("failed to write to %s, %v", tmpFile, err))
+	}
+
+	if n != nlen {
+		defer deleteFile()
+		panic(fmt.Errorf("the file size[%d] is not matching '%s'[%d]", n, UPLOAD_HEADER_CONTENT_LENGTH, nlen))
+	}
+
+	if err := os.Rename(tmpFile, location); err != nil {
+		defer deleteFile()
+		panic(fmt.Errorf("failed rename the file[%s] to %s, %v", tmpFile, location, err))
+	}
+
+	sum := lib.Md5(location)
+	if sum != digest {
+		defer deleteFile()
+		panic(fmt.Errorf("corrupted file; expected MD5[%s] but got %s", digest, sum))
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
 func (u *Upload) Handler(w http.ResponseWriter, req *http.Request) {
-	if req.Method == "GET" {
-		u.handleGet(w, req)
-	} else {
-		u.handleUpload(w, req)
+	action := u.toAction(req)
+
+	if action == UPLOAD_START {
+		u.start(w, req)
+	} else if action == UPLOAD_MONOLITHIC {
+		u.monolithicUpload(w, req)
 	}
 }
 

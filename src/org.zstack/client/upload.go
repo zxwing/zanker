@@ -2,8 +2,8 @@ package client
 
 import (
 	"flag"
-	"mime/multipart"
-	LIB "org.zstack/lib"
+	"fmt"
+	"org.zstack/lib"
 	"path"
 )
 
@@ -26,7 +26,7 @@ func (u *Upload) CheckFlags() error {
 	}
 
 	src := args[0]
-	if !LIB.IsFile(src) {
+	if !lib.IsFile(src) {
 		return fmt.Errorf("%s is not found or not a file", src)
 	}
 
@@ -39,21 +39,5 @@ func (u *Upload) CheckFlags() error {
 }
 
 func (u *Upload) Run() int {
-	args := flag.Args()[1:]
-
-	src := args[0]
-	dst := args[1]
-
-	bodyBuf := &bytes.Buffer{}
-	bodyWriter := multipart.NewWriter(bodyBuf)
-
-	fileWriter, err := bodyWriter.CreateFormFile("uploadfile", src)
-	if err != nil {
-		panic(err)
-	}
-
-	fh, err := os.Open(src)
-	if err != nil {
-		panic(err)
-	}
+	return 0
 }

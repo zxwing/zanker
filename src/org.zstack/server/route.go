@@ -10,7 +10,7 @@ import (
 type (
 	ApiRoute interface {
 		Methods() []string
-		Path() string
+		Path() []string
 		Handler(http.ResponseWriter, *http.Request)
 	}
 
@@ -24,18 +24,28 @@ var (
 )
 
 func RegisterApiRoute(r ApiRoute) {
-	if r.Path() == "" {
+	paths := r.Path()
+
+	if len(paths) == 0 {
 		panic("Path cannot be empty")
+	}
+
+	for _, p := range paths {
+		if p == "" {
+			panic("empty path is not allowed")
+		}
 	}
 
 	if len(r.Methods()) == 0 {
 		panic("Methods cannot be empty")
 	}
 
-	LOG.WithFields(LOG.Fields{
-		"Path":    r.Path(),
-		"Methods": r.Methods(),
-	}).Debug("Registered a new Handler")
+	for _, p := range paths {
+		LOG.WithFields(LOG.Fields{
+			"Path":    p,
+			"Methods": r.Methods(),
+		}).Debug("Registered a new Handler")
+	}
 
 	routes = append(routes, r)
 }
@@ -43,8 +53,10 @@ func RegisterApiRoute(r ApiRoute) {
 func NewRouter() *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
 	for _, r := range routes {
-		re := router.HandleFunc(Url(r.Path()).Path(), routeManager.WrapHandler(r))
-		re.Methods(r.Methods()...)
+		for _, path := range r.Path() {
+			re := router.HandleFunc(Url(path).Path(), routeManager.WrapHandler(r))
+			re.Methods(r.Methods()...)
+		}
 	}
 
 	return router

@@ -18,8 +18,8 @@ func (p *Ping) Methods() []string {
 	return []string{"GET", "POST"}
 }
 
-func (p *Ping) Path() string {
-	return "/ping"
+func (p *Ping) Path() []string {
+	return []string{"/ping"}
 }
 
 func (p *Ping) Handler(w http.ResponseWriter, req *http.Request) {
