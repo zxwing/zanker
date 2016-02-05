@@ -24,16 +24,7 @@ var (
 	optionSocketPath string
 
 	server = &Server{}
-
-	PingRoute = &Route{
-		Path:    ApiURL("/ping"),
-		Handler: APIPing,
-	}
 )
-
-func APIPing(w http.ResponseWriter, req *http.Request) {
-	w.WriteHeader(http.StatusOK)
-}
 
 func (serv *Server) Run() {
 	go func() {
@@ -86,10 +77,6 @@ func registerServerOptions() {
 	registerOption(o)
 }
 
-func registerServerRoute() {
-	PingRoute.Register()
-}
-
 func initLog() {
 	LOG.SetOutput(os.Stderr)
 	LOG.SetLevel(LOG.DebugLevel)
@@ -98,5 +85,4 @@ func initLog() {
 func init() {
 	initLog()
 	registerServerOptions()
-	registerServerRoute()
 }

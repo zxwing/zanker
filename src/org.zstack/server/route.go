@@ -8,48 +8,49 @@ import (
 )
 
 type (
-	Route struct {
-		Methods []string
-		Path    string
-		Handler http.HandlerFunc
+	ApiRoute interface {
+		Methods() []string
+		Path() string
+		Handler(http.ResponseWriter, *http.Request)
 	}
+
+	RouteManager struct{}
 )
 
 var (
-	routes []*Route = make([]*Route, 0)
+	routes []ApiRoute = make([]ApiRoute, 0)
+
+	routeManager = &RouteManager{}
 )
 
-func (r *Route) Register() {
-	if r.Path == "" {
+func RegisterApiRoute(r ApiRoute) {
+	if r.Path() == "" {
 		panic("Path cannot be empty")
 	}
 
-	if r.Handler == nil {
-		panic("Handler cannot be nil")
+	if len(r.Methods()) == 0 {
+		panic("Methods cannot be empty")
 	}
 
-	if len(r.Methods) == 0 {
-		r.Methods = []string{"POST", "GET"}
-	}
+	LOG.WithFields(LOG.Fields{
+		"Path":    r.Path(),
+		"Methods": r.Methods(),
+	}).Debug("Registered a new Handler")
 
 	routes = append(routes, r)
-	LOG.WithFields(LOG.Fields{
-		"Path":    r.Path,
-		"Methods": r.Methods,
-	}).Debug("Registered a new Handler")
 }
 
 func NewRouter() *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
 	for _, r := range routes {
-		re := router.HandleFunc(r.Path, r.GetWrappedHandler())
-		re.Methods(r.Methods...)
+		re := router.HandleFunc(Url(r.Path()).Path(), routeManager.WrapHandler(r))
+		re.Methods(r.Methods()...)
 	}
 
 	return router
 }
 
-func (r *Route) GetWrappedHandler() func(http.ResponseWriter, *http.Request) {
+func (mgr *RouteManager) WrapHandler(api ApiRoute) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -59,6 +60,6 @@ func (r *Route) GetWrappedHandler() func(http.ResponseWriter, *http.Request) {
 		}()
 
 		LOG.Debugf("%s %v", req.Method, req.URL)
-		r.Handler(w, req)
+		api.Handler(w, req)
 	}
 }
