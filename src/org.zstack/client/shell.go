@@ -15,6 +15,7 @@ type (
 		command string
 		file    string
 		json    bool
+		stdin   bool
 	}
 
 	_shellResult struct {
@@ -36,11 +37,12 @@ func (s *_shell) Flags(f *flag.FlagSet) {
 	f.StringVar(&s.command, "c", "", "one line shell command")
 	f.StringVar(&s.file, "f", "", "path to the shell file")
 	f.BoolVar(&s.json, "json", false, "encode output in JSON format")
+	f.BoolVar(&s.stdin, "stdin", false, "read the script from the stdin")
 }
 
 func (s *_shell) CheckFlags() error {
-	if s.command == "" && s.file == "" {
-		return fmt.Errorf("please specify either a shell command by '-c' or a shell script file by '-f'")
+	if s.command == "" && s.file == "" && !s.stdin {
+		return fmt.Errorf("please specify a shell command by '-c', a shell script file by '-f', or import a script by the '-stdin'")
 	} else if s.command == "" && s.file != "" {
 		info, err := os.Stat(s.file)
 		if os.IsNotExist(err) {
@@ -63,8 +65,16 @@ func (s *_shell) Run() int {
 	if s.command != "" {
 		url := Url(SHELL_API_PATH).Query("command", s.command).String()
 		status, body, rsp = Http.Get(url)
-	} else {
+	} else if s.file != "" {
 		content, err := ioutil.ReadFile(s.file)
+		if err != nil {
+			panic(err)
+		}
+
+		url := Url(SHELL_API_PATH).String()
+		status, body, rsp = Http.Post(url, string(content))
+	} else if s.stdin {
+		content, err := ioutil.ReadAll(os.Stdin)
 		if err != nil {
 			panic(err)
 		}
