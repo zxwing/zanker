@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	LIB "org.zstack/lib"
 	"os"
 )
 
@@ -44,13 +45,8 @@ func (s *_shell) CheckFlags() error {
 	if s.command == "" && s.file == "" && !s.stdin {
 		return fmt.Errorf("please specify a shell command by '-c', a shell script file by '-f', or import a script by the '-stdin'")
 	} else if s.command == "" && s.file != "" {
-		info, err := os.Stat(s.file)
-		if os.IsNotExist(err) {
-			return fmt.Errorf("the shell file[%s] not found\n", s.file)
-		}
-
-		if info.IsDir() {
-			return fmt.Errorf("[%s] is a directory, not a file\n", s.file)
+		if !LIB.IsFile(s.file) {
+			return fmt.Errorf("the shell file[%s] not found or not a file\n", s.file)
 		}
 	}
 
